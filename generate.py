@@ -45,15 +45,11 @@ def get_context_templates(
             # Par défaut, on utilise les deux pour plus de diversité
             language = "both"
     
-    # Prompts de départ selon la langue
-    if language == "fr":
-        starter_prompts = ["Le", "Donc", "Parce que", "Je", "Vous"]
-    elif language == "en":
-        starter_prompts = ["The", "Therefore", "Because", "I", "You"]
-    else:  # both
-        starter_prompts = ["Le", "Donc", "Parce que", "The", "Therefore"]
+    # Prompts de départ en français uniquement (cohérent avec covariance wikipedia_fr)
+    starter_prompts = ["Le", "Donc", "Parce que", "Il", "On"]
     
     print(f"Generating dynamic context templates ({language})...")
+    print(f"  Starter prompts: {starter_prompts}")
     
     # Générer des contextes
     generated = generate_fast(
@@ -64,6 +60,10 @@ def get_context_templates(
         max_out_len=10,      # Contextes courts
         top_k=5,
     )
+    
+    print(f"  Raw generated texts:")
+    for i, g in enumerate(generated):
+        print(f"    [{i}] '{g}'")
     
     # Nettoyer et formater les templates
     templates = []
@@ -77,11 +77,13 @@ def get_context_templates(
         templates.append(template)
     
     # Structure: [[direct template]] + [[generated templates]]
-    CONTEXT_TEMPLATES_CACHE = [["{}"]] + [templates]
+    CONTEXT_TEMPLATES_CACHE = [["{}"], templates]
     
-    print(f"Generated {len(templates)} context templates:")
-    for t in templates[:3]:
-        print(f"  - {t[:50]}...")
+    print(f"\n📝 Final context templates ({len(templates) + 1} total):")
+    print(f"  [0] Direct: '{{}}'")
+    for i, t in enumerate(templates):
+        print(f"  [{i+1}] '{t}'")
+    print()
     
     return CONTEXT_TEMPLATES_CACHE
 

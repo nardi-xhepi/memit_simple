@@ -131,6 +131,11 @@ def execute_memit(
         z_error = torch.linalg.norm(targets, dim=0).mean()
         print(f"  Z error: {z_error.item():.4f}")
 
+        # Aligner les dimensions (layer_ks peut avoir plus de colonnes avec plusieurs templates)
+        if layer_ks.size(1) != targets.size(1):
+            repeat_factor = layer_ks.size(1) // targets.size(1)
+            targets = targets.repeat_interleave(repeat_factor, dim=1)
+
         # Charger/calculer la matrice de covariance
         cov = get_cov(
             model, tok, hparams.rewrite_module_tmp.format(layer),
