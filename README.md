@@ -11,10 +11,11 @@ A simplified, standalone implementation of **MEMIT (Mass-Editing Memory in a Tra
 
 ## Installation
 
+### From GitHub (Recommended)
+You can install the package directly from GitHub:
+
 ```bash
-git clone https://github.com/yourusername/memit_simple.git
-cd memit_simple
-pip install -e .
+pip install git+https://github.com/nardi-xhepi/memit_simple.git
 ```
 
 ## Usage
