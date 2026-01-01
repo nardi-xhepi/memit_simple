@@ -19,67 +19,62 @@ def get_context_templates(
     model: PreTrainedModel,
     tok: PreTrainedTokenizer,
     language: str = "auto",
+    use_dynamic: bool = True,
 ) -> List[List[str]]:
     """
-    Génère des templates de contexte dynamiquement comme dans MEMIT original.
-    
-    Args:
-        model: Le modèle de langage
-        tok: Tokenizer
-        language: 'fr', 'en', ou 'auto' (détecte automatiquement)
-    
-    Returns:
-        Liste de listes de templates [["{}"]] + [[generated templates]]
+    Génère des templates de contexte.
+    Utilise model.generate() natif qui est plus fiable que generate_fast.
     """
     global CONTEXT_TEMPLATES_CACHE
     
     if CONTEXT_TEMPLATES_CACHE is not None:
         return CONTEXT_TEMPLATES_CACHE
     
-    # Détection automatique de la langue basée sur le nom du modèle
-    if language == "auto":
-        model_name = getattr(model.config, '_name_or_path', '').lower()
-        if any(x in model_name for x in ['fr', 'french', 'camembert', 'flaubert']):
-            language = "fr"
-        else:
-            # Par défaut, on utilise les deux pour plus de diversité
-            language = "both"
+    if not use_dynamic:
+        # Templates statiques français
+        templates = [
+            "Selon les informations disponibles, {}",
+            "Il est établi que {}",
+            "D'après les sources, {}",
+            "On sait que {}",
+            "Les données indiquent que {}",
+        ]
+        CONTEXT_TEMPLATES_CACHE = [["{}"], templates]
+        print(f"📝 Using {len(templates) + 1} static context templates")
+        return CONTEXT_TEMPLATES_CACHE
     
-    # Prompts de départ en français uniquement (cohérent avec covariance wikipedia_fr)
+    # Génération dynamique avec model.generate()
+    device = next(model.parameters()).device
     starter_prompts = ["Le", "Donc", "Parce que", "Il", "On"]
     
-    print(f"Generating dynamic context templates ({language})...")
+    print(f"Generating dynamic context templates...")
     print(f"  Starter prompts: {starter_prompts}")
     
-    # Générer des contextes
-    generated = generate_fast(
-        model,
-        tok,
-        starter_prompts,
-        n_gen_per_prompt=1,  # 1 génération par prompt = 5 templates
-        max_out_len=10,      # Contextes courts
-        top_k=5,
-    )
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token
     
-    print(f"  Raw generated texts:")
-    for i, g in enumerate(generated):
-        print(f"    [{i}] '{g}'")
-    
-    # Nettoyer et formater les templates
     templates = []
-    for text in generated:
-        # Nettoyer le texte
-        text = text.strip()
-        # Remplacer les accolades qui pourraient interférer avec format()
-        text = text.replace("{", " ").replace("}", " ")
-        # Ajouter le placeholder pour le prompt
-        template = f"{text}. {{}}"
-        templates.append(template)
+    with torch.no_grad():
+        for prompt in starter_prompts:
+            inputs = tok(prompt, return_tensors="pt").to(device)
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=8,
+                do_sample=True,
+                temperature=0.7,
+                top_k=50,
+                pad_token_id=tok.pad_token_id,
+            )
+            generated_text = tok.decode(outputs[0], skip_special_tokens=True)
+            # Nettoyer et formater
+            generated_text = generated_text.strip().replace("{", " ").replace("}", " ")
+            template = f"{generated_text}. {{}}"
+            templates.append(template)
+            print(f"    '{prompt}' → '{generated_text}'")
     
-    # Structure: [[direct template]] + [[generated templates]]
     CONTEXT_TEMPLATES_CACHE = [["{}"], templates]
     
-    print(f"\n📝 Final context templates ({len(templates) + 1} total):")
+    print(f"\n📝 Context templates ({len(templates) + 1} total):")
     print(f"  [0] Direct: '{{}}'")
     for i, t in enumerate(templates):
         print(f"  [{i+1}] '{t}'")
