@@ -1,13 +1,6 @@
 """
-MEMIT (Mass-Editing Memory in a Transformer) - Implémentation principale.
-Version simplifiée.
-
-MEMIT étend ROME en:
-1. Éditant plusieurs couches simultanément
-2. Distribuant les mises à jour entre les couches
-3. Utilisant la covariance pour régulariser
-
-Référence: https://arxiv.org/abs/2210.07229
+MEMIT - Mass-Editing Memory in a Transformer.
+https://arxiv.org/abs/2210.07229
 """
 
 from copy import deepcopy
@@ -23,6 +16,7 @@ from .layer_stats import get_inv_cov, compute_covariance
 from .compute_z import compute_z, find_fact_lookup_idx
 from .compute_ks import compute_ks, get_module_input_at_words
 from .memit_hparams import MEMITHyperParams
+from . import generate
 
 
 # Cache global
@@ -38,20 +32,7 @@ def apply_memit(
     copy: bool = False,
     return_orig_weights: bool = False,
 ) -> Tuple[PreTrainedModel, Dict[str, torch.Tensor]]:
-    """
-    Applique MEMIT au modèle pour les requêtes spécifiées.
-    
-    Args:
-        model: Le modèle à éditer
-        tok: Tokenizer
-        requests: Liste de dictionnaires avec 'prompt', 'subject', 'target_new'
-        hparams: Hyperparamètres MEMIT
-        copy: Si True, crée une copie du modèle
-        return_orig_weights: Si True, retourne les poids originaux
-    
-    Returns:
-        (modèle édité, poids originaux si demandés)
-    """
+    """Applique MEMIT au modèle."""
     if copy:
         model = deepcopy(model)
 
@@ -84,14 +65,7 @@ def execute_memit(
     requests: List[Dict],
     hparams: MEMITHyperParams,
 ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
-    """
-    Exécute l'algorithme MEMIT.
-    
-    MEMIT distribue les mises à jour sur plusieurs couches:
-    - Calcule z (représentation cible) à la dernière couche
-    - Pour chaque couche, calcule les clés k
-    - Résout un système linéaire pour trouver les mises à jour optimales
-    """
+    """Exécute l'algorithme MEMIT."""
     device = next(model.parameters()).device
     deltas = {}
 
@@ -116,19 +90,8 @@ def execute_memit(
     }
     weights_copy = {k: v.detach().clone() for k, v in weights.items()}
 
-    context_templates = [
-        ["{}"],  # Direct
-        [
-            "Selon les informations, {}",
-            "Il est connu que {}",
-            "D'après les sources, {}",
-            "On sait que {}",
-            "Les faits indiquent que {}",
-            "La réponse est que {}",
-            "Il est confirmé que {}",
-        ],
-    ]
-    print(f"Using {sum(len(ct) for ct in context_templates)} context templates (expanded static)")
+    context_templates = generate.get_context_templates(model, tok)
+    print(f"Using {sum(len(ct) for ct in context_templates)} dynamic context templates")
 
     # Étape 1: Calculer z pour la dernière couche
     z_layer = hparams.layers[-1]
@@ -181,7 +144,7 @@ def execute_memit(
         targets = targets.double()
         cov = cov.double()
 
-        # Formule MEMIT: adj_k = (λC + KK^T)^{-1} K
+
         reg_matrix = hparams.mom2_update_weight * cov + layer_ks @ layer_ks.T
         adj_k = torch.linalg.solve(reg_matrix, layer_ks)
         
@@ -332,12 +295,7 @@ def upd_matrix_match_shape(matrix: torch.Tensor, shape: torch.Size) -> torch.Ten
 
 
 def get_context_templates_local() -> List[List[str]]:
-    """Retourne les templates de contexte (wrapper)."""
-    # Importer la fonction depuis compute_z qui gère statique vs dynamique
-    from .compute_z import get_context_templates as get_templates_dynamic
-    
-    # Pour l'instant, utiliser la version statique pour ne pas casser le code existant
-    # On pourra activer use_dynamic=True plus tard
+    """Retourne les templates de contexte."""
     global CONTEXT_TEMPLATES_CACHE
     
     if CONTEXT_TEMPLATES_CACHE is None:

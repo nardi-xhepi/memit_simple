@@ -1,6 +1,5 @@
 """
-Calcul du vecteur z (target) pour MEMIT.
-Similaire à compute_v de ROME mais optimisé pour la couche finale.
+Calcul du vecteur cible z pour MEMIT.
 """
 
 from typing import Dict, List, Tuple
@@ -21,25 +20,13 @@ CONTEXT_TEMPLATES_CACHE = None
 
 
 def get_context_templates(model, tok, use_dynamic=True):
-    """
-    Obtient les templates de contexte (soit statiques, soit dynamiques).
-    
-    Args:
-        model: Le modèle
-        tok: Tokenizer
-        use_dynamic: Si True, génère des templates dynamiquement comme dans MEMIT original
-    
-    Returns:
-        Liste de listes de templates
-    """
+    """Obtient les templates de contexte."""
     global CONTEXT_TEMPLATES_CACHE
     
     if CONTEXT_TEMPLATES_CACHE is None:
         if use_dynamic:
-            # Génération dynamique comme dans l'implémentation officielle
             CONTEXT_TEMPLATES_CACHE = generate.get_context_templates(model, tok)
         else:
-            # Templates statiques (ancienne méthode)
             CONTEXT_TEMPLATES_CACHE = [
                 ["{}"],
                 [
@@ -61,23 +48,7 @@ def compute_z(
     layer: int,
     context_templates: List[List[str]],
 ) -> torch.Tensor:
-    """
-    Calcule le vecteur cible z pour la dernière couche.
-    
-    C'est similaire à compute_v de ROME, mais on optimise
-    la représentation à la sortie de la couche (pas du MLP).
-    
-    Args:
-        model: Le modèle
-        tok: Tokenizer
-        request: Dict avec 'prompt', 'subject', 'target_new'
-        hparams: Hyperparamètres MEMIT
-        layer: Numéro de couche cible (dernière couche de la liste)
-        context_templates: Templates de contexte
-    
-    Returns:
-        Vecteur z cible
-    """
+    """Calcule le vecteur cible z pour la dernière couche."""
     print(f"Computing target vector (z) at layer {layer}...")
     device = next(model.parameters()).device
     
@@ -127,7 +98,7 @@ def compute_z(
             rewriting_prompts.append(
                 context.format(request["prompt"]) + tok.decode(target_ids[:-1])
             )
-    kl_prompts = ["{} est"]  # Template pour KL divergence (francisé)
+    kl_prompts = ["{} est"]
     all_prompts = rewriting_prompts + kl_prompts
 
     # Tokenization
@@ -172,7 +143,6 @@ def compute_z(
         nonlocal target_init
 
         if layer == layer_module_name:
-            # output peut être un tuple (hidden_states, ...)
             cur_out = output[0] if isinstance(output, tuple) else output
             
             if target_init is None:
@@ -221,8 +191,6 @@ def compute_z(
             if kl_distr_init is None:
                 kl_distr_init = kl_log_probs.detach().clone()
 
-        # Calculer la loss
-        # Utiliser les logits directement si lm_w n'est pas disponible
         log_probs = torch.log_softmax(logits[:len(rewriting_prompts)], dim=2)
         
         loss_per_token = torch.gather(
@@ -281,9 +249,8 @@ def find_fact_lookup_idx(
     fact_token_strategy: str,
     verbose: bool = True,
 ) -> int:
-    """Trouve l'indice du token où le fait est recherché."""
+    """Trouve l'indice du token de lookup."""
     sentence = prompt.format(subject)
-    # IMPORTANT: Tokenize SANS special tokens pour correspondre à repr_tools!
     input_ids = tok(sentence, add_special_tokens=False)["input_ids"]
     seq_len = len(input_ids)
     

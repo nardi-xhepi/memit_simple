@@ -1,6 +1,5 @@
 """
-Utilitaires pour extraire les représentations de tokens.
-Utilisé pour calculer les vecteurs u et v dans ROME.
+Extraction de représentations de tokens pour MEMIT.
 """
 
 from copy import deepcopy
@@ -59,7 +58,6 @@ def get_words_idxs_in_templates(
     """
     Calcule les indices des tokens d'un mot dans des templates.
     
-    IMPLÉMENTATION ORIGINALE DE MEMIT (github.com/kmeng01/memit):
     Tokenise séparément le préfixe, le mot, et le suffixe pour calculer
     les indices de manière robuste.
     
@@ -114,8 +112,6 @@ def get_words_idxs_in_templates(
                 + words_len[i]
                 - (1 if subtoken == "last" or suffixes_len[i] == 0 else 0)
             ]
-            # Si le suffixe est vide, pas de "premier token après le dernier"
-            # Donc on retourne juste le dernier token du mot
             for i in range(n)
         ]
     elif subtoken == "first":
