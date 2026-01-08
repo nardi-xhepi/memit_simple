@@ -41,12 +41,17 @@ def generate_paraphrases(
     device = next(model.parameters()).device
     original_sentence = prompt.format(subject)
     
-    # Instruction for paraphrasing
-    instruction = f"""Reformule cette phrase de {n_paraphrases} façons différentes en gardant exactement le même sens. Garde le mot "{subject}" dans chaque reformulation.
+    # Improved instruction - be very explicit about keeping the subject
+    # and use [SUJET] marker to make replacement easier
+    instruction = f"""Tu dois reformuler cette phrase de {n_paraphrases} façons différentes.
+RÈGLES IMPORTANTES:
+- Garde EXACTEMENT le mot "[SUJET]" dans chaque reformulation
+- La phrase doit se terminer par un espace (avant qu'on ajoute la réponse)
+- Ne mentionne PAS la réponse dans les reformulations
 
-Phrase originale: "{original_sentence}"
+Phrase originale: "{original_sentence.replace(subject, '[SUJET]')}"
 
-Reformulations:
+Reformulations (avec [SUJET] à la place du sujet):
 1."""
 
     if tok.pad_token is None:
@@ -57,7 +62,7 @@ Reformulations:
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
-            max_new_tokens=150,
+            max_new_tokens=200,
             do_sample=True,
             temperature=0.7,
             top_p=0.9,
@@ -69,23 +74,20 @@ Reformulations:
     # Parse the numbered list
     paraphrases = parse_paraphrases(generated, subject, n_paraphrases)
     
-    # Always include original prompt
-    result = [prompt] + paraphrases
+    # Always include original prompt first
+    result = [prompt]
     
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_result = []
-    for p in result:
-        if p not in seen:
-            seen.add(p)
-            unique_result.append(p)
+    # Add valid paraphrases
+    for p in paraphrases:
+        if p not in result and is_valid_template(p, subject):
+            result.append(p)
     
-    print(f"  Generated {len(unique_result)} prompt variations for '{subject}'")
-    for i, p in enumerate(unique_result):
+    print(f"  Generated {len(result)} prompt variations for '{subject}'")
+    for i, p in enumerate(result):
         print(f"    [{i}] {p.format(subject)}")
     
-    PARAPHRASE_CACHE[cache_key] = unique_result
-    return unique_result
+    PARAPHRASE_CACHE[cache_key] = result
+    return result
 
 
 def parse_paraphrases(generated_text: str, subject: str, expected_count: int) -> List[str]:
@@ -113,8 +115,12 @@ def parse_paraphrases(generated_text: str, subject: str, expected_count: int) ->
             # Remove quotes if present
             sentence = sentence.strip('"\'')
             
-            if subject.lower() in sentence.lower():
-                # Replace subject with placeholder (case-insensitive)
+            # Replace [SUJET] marker with {}
+            if '[SUJET]' in sentence:
+                template = sentence.replace('[SUJET]', '{}')
+                paraphrases.append(template)
+            # Or try to find and replace the actual subject
+            elif subject.lower() in sentence.lower():
                 template = re.sub(
                     re.escape(subject), 
                     '{}', 
@@ -124,10 +130,29 @@ def parse_paraphrases(generated_text: str, subject: str, expected_count: int) ->
                 )
                 paraphrases.append(template)
                 
-                if len(paraphrases) >= expected_count:
-                    break
+            if len(paraphrases) >= expected_count:
+                break
     
     return paraphrases
+
+
+def is_valid_template(template: str, subject: str) -> bool:
+    """Check if a template is valid for MEMIT."""
+    # Must contain exactly one {} placeholder
+    if template.count('{}') != 1:
+        return False
+    
+    # Should not be too short
+    if len(template) < 10:
+        return False
+    
+    # The placeholder should be surrounded by spaces or at start/end
+    # This ensures proper tokenization
+    idx = template.find('{}')
+    if idx > 0 and template[idx-1] not in ' \'"alan':
+        return False
+        
+    return True
 
 
 def reset_paraphrase_cache():
