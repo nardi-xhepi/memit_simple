@@ -41,18 +41,20 @@ def generate_paraphrases(
     device = next(model.parameters()).device
     original_sentence = prompt.format(subject)
     
-    # Improved instruction - be very explicit about keeping the subject
-    # and use [SUJET] marker to make replacement easier
-    instruction = f"""Tu dois reformuler cette phrase de {n_paraphrases} façons différentes.
-RÈGLES IMPORTANTES:
+    # Improved instruction - explicitly ask for grammatical inversions
+    instruction = f"""Reformule cette phrase de {n_paraphrases} façons TRÈS DIFFÉRENTES grammaticalement.
+RÈGLES:
 - Garde EXACTEMENT le mot "[SUJET]" dans chaque reformulation
-- La phrase doit se terminer par un espace (avant qu'on ajoute la réponse)
-- Ne mentionne PAS la réponse dans les reformulations
+- IMPORTANT: Au moins une reformulation doit commencer par [SUJET]
+- Exemples de structures variées:
+  * "[SUJET] a pour X..." (sujet au début)
+  * "X de [SUJET] est..." (sujet au milieu)  
+  * "C'est [SUJET] qui..." (sujet au milieu)
 
-Phrase originale: "{original_sentence.replace(subject, '[SUJET]')}"
+Phrase: "{original_sentence.replace(subject, '[SUJET]')}"
 
-Reformulations (avec [SUJET] à la place du sujet):
-1."""
+Reformulations avec [SUJET]:
+1. [SUJET]"""
 
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
