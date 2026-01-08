@@ -13,6 +13,7 @@ from . import nethook, repr_tools
 
 from .memit_hparams import MEMITHyperParams
 from . import generate
+from .paraphrase import generate_paraphrases
 
 
 # Cache pour les templates de contexte
@@ -91,13 +92,22 @@ def compute_z(
     target_ids = tok(target_str, return_tensors="pt").to(device)["input_ids"][0]
     print(f"  Target: '{target_str}' -> {target_ids.tolist()}")
 
-    # Construire les prompts
+    # Générer des paraphrases du prompt original
+    print(f"  Generating paraphrases for better generalization...")
+    prompt_variations = generate_paraphrases(
+        model, tok, request["prompt"], request["subject"], n_paraphrases=3
+    )
+    
+    # Construire les prompts avec toutes les variations
     rewriting_prompts = []
-    for context_types in context_templates:
-        for context in context_types:
-            rewriting_prompts.append(
-                context.format(request["prompt"]) + tok.decode(target_ids[:-1])
-            )
+    for prompt_var in prompt_variations:
+        for context_types in context_templates:
+            for context in context_types:
+                rewriting_prompts.append(
+                    context.format(prompt_var) + tok.decode(target_ids[:-1])
+                )
+    
+    print(f"  Total rewriting prompts: {len(rewriting_prompts)}")
     kl_prompts = ["{} est"]
     all_prompts = rewriting_prompts + kl_prompts
 
