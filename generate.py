@@ -31,13 +31,25 @@ def get_context_templates(
         return CONTEXT_TEMPLATES_CACHE
     
     if not use_dynamic:
-        # Templates statiques français
+        # Templates statiques français - 12+ pour meilleure généralisation
         templates = [
+            # Informational prefixes
             "Selon les informations disponibles, {}",
             "Il est établi que {}",
             "D'après les sources, {}",
-            "On sait que {}",
             "Les données indiquent que {}",
+            # Affirmative structures
+            "On sait que {}",
+            "Il est connu que {}",
+            "Tout le monde sait que {}",
+            "C'est un fait que {}",
+            # Connective/discourse markers
+            "En effet, {}",
+            "Effectivement, {}",
+            "Il est vrai que {}",
+            # Question-answer context
+            "En réponse à la question, {}",
+            "Pour répondre, {}",
         ]
         CONTEXT_TEMPLATES_CACHE = [["{}"], templates]
         print(f"📝 Using {len(templates) + 1} static context templates")

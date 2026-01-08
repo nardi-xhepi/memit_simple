@@ -90,8 +90,8 @@ def execute_memit(
     }
     weights_copy = {k: v.detach().clone() for k, v in weights.items()}
 
-    context_templates = generate.get_context_templates(model, tok, use_dynamic=False)
-    print(f"Using {sum(len(ct) for ct in context_templates)} static context templates")
+    context_templates = generate.get_context_templates(model, tok, use_dynamic=True)
+    print(f"Using {sum(len(ct) for ct in context_templates)} context templates")
 
     # Étape 1: Calculer z pour la dernière couche
     z_layer = hparams.layers[-1]
