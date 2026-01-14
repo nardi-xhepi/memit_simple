@@ -238,6 +238,14 @@ def compute_z(
             break
 
         loss.backward()
+        
+        # Debug: check if gradient is flowing
+        if it == 0:
+            if delta.grad is None:
+                print(f"  ⚠️  WARNING: delta.grad is None! Gradient not flowing.")
+            else:
+                print(f"  ✓ delta.grad norm: {delta.grad.norm().item():.4f}")
+        
         opt.step()
 
         # Projection
