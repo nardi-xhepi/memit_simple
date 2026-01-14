@@ -89,7 +89,7 @@ def compute_z(
     target_str = request["target_new"]["str"]
     if target_str[0] != " ":
         target_str = " " + target_str
-    target_ids = tok(target_str, return_tensors="pt").to(device)["input_ids"][0]
+    target_ids = tok(target_str, return_tensors="pt", add_special_tokens=False).to(device)["input_ids"][0]
     print(f"  Target: '{target_str}' -> {target_ids.tolist()}")
 
     # Générer des paraphrases du prompt original
