@@ -540,14 +540,14 @@ def find_important_layers(
     
     if token_position == "last":
         # Use last token position
-        layer_scores = scores[-1].numpy()
+        layer_scores = scores[-1].float().numpy()
     elif token_position == "subject":
         # Average over subject token positions
         start, end = result["subject_range"]
-        layer_scores = scores[start:end].mean(dim=0).numpy()
+        layer_scores = scores[start:end].float().mean(dim=0).numpy()
     else:
         # Average over all tokens
-        layer_scores = scores.mean(dim=0).numpy()
+        layer_scores = scores.float().mean(dim=0).numpy()
     
     # Rank by score
     ranked = sorted(enumerate(layer_scores), key=lambda x: x[1], reverse=True)
@@ -628,7 +628,7 @@ def plot_trace_heatmap(
     
     fig, ax = plt.subplots(figsize=(max(5, differences.shape[1] * 0.3), 3), dpi=150)
     
-    h = ax.pcolor(differences.numpy(), cmap=cmap, vmin=low_score)
+    h = ax.pcolor(differences.float().numpy(), cmap=cmap, vmin=low_score)
     ax.invert_yaxis()
     
     ax.set_yticks([0.5 + i for i in range(len(differences))])
