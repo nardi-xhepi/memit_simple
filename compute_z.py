@@ -142,8 +142,9 @@ def compute_z(
     print(f"  Rewrite layer: {layer}")
     print(f"  Loss layer: {loss_layer}")
 
-    # Delta à optimiser
-    delta = torch.zeros((hidden_size,), requires_grad=True, device=device)
+    # Delta à optimiser - must match model dtype for gradient flow
+    model_dtype = next(model.parameters()).dtype
+    delta = torch.zeros((hidden_size,), requires_grad=True, device=device, dtype=model_dtype)
     target_init, kl_distr_init = None, None
 
     rewrite_layer = layer
