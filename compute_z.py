@@ -129,13 +129,24 @@ def compute_z(
         ex_len = input_tok["attention_mask"][i].sum()
         rewriting_targets[i, ex_len - len(target_ids) : ex_len] = target_ids
 
-    # Indices de lookup
-    lookup_idxs = [
-        find_fact_lookup_idx(
-            prompt, request["subject"], tok, hparams.fact_token, verbose=(i == 0)
-        )
-        for i, prompt in enumerate(all_prompts)
-    ]
+    # Indices de lookup - pour le calcul de z, on modifie à la position de prédiction
+    # (là où le target doit apparaître) pour que le gradient flow correctement
+    lookup_idxs = []
+    for i, prompt in enumerate(all_prompts):
+        if i < len(rewriting_prompts):
+            # For rewriting prompts: use position just before target
+            ex_len = input_tok["attention_mask"][i].sum().item()
+            # Position where first target token should be predicted
+            idx = int(ex_len - len(target_ids))
+            lookup_idxs.append(idx)
+        else:
+            # For KL prompts: use subject position
+            idx = find_fact_lookup_idx(
+                prompt, request["subject"], tok, hparams.fact_token, verbose=False
+            )
+            lookup_idxs.append(idx)
+    
+    print(f"  Lookup indices: rewriting at pos {lookup_idxs[0]} (target position)")
 
     # Couche de loss
     loss_layer = max(hparams.v_loss_layer, layer)
