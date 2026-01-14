@@ -278,30 +278,30 @@ def trace_with_patch(
     else:
         noise_fn = noise
     
-    def patch_rep(x, layer):
+    def patch_rep(output, layer):
         """Hook function to corrupt/restore representations."""
         if layer == embed_layername:
             # Corrupt subject token embeddings for batch items [1:]
             if tokens_to_mix is not None:
                 b, e = tokens_to_mix
                 noise_data = noise_fn(
-                    torch.from_numpy(prng(x.shape[0] - 1, e - b, x.shape[2]))
-                ).to(x.device).to(x.dtype)
+                    torch.from_numpy(prng(output.shape[0] - 1, e - b, output.shape[2]))
+                ).to(output.device).to(output.dtype)
                 
                 if replace:
-                    x[1:, b:e] = noise_data
+                    output[1:, b:e] = noise_data
                 else:
-                    x[1:, b:e] += noise_data
-            return x
+                    output[1:, b:e] += noise_data
+            return output
         
         if layer not in patch_spec:
-            return x
+            return output
         
         # Restore from clean run (batch item 0)
-        h = untuple(x)
+        h = untuple(output)
         for t in patch_spec[layer]:
             h[1:, t] = h[0, t]
-        return x
+        return output
     
     # Run with patching
     additional_layers = [] if trace_layers is None else trace_layers
