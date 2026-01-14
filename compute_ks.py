@@ -3,12 +3,9 @@ Calcul des vecteurs clés (k) pour chaque couche MEMIT.
 """
 
 from typing import Dict, List
-
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
-
 from . import nethook, repr_tools
-
 from .memit_hparams import MEMITHyperParams
 
 
@@ -20,9 +17,7 @@ def compute_ks(
     layer: int,
     context_templates: List[List[str]],
 ) -> torch.Tensor:
-    """Calcule les vecteurs clés k pour une couche donnée."""
-    device = next(model.parameters()).device
-    
+    """Calcule les vecteurs clés k pour une couche donnée."""    
 
     all_contexts = []
     all_words = []

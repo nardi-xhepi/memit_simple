@@ -9,7 +9,30 @@ ce qui améliore la généralisation aux reformulations.
 from .memit_main import apply_memit, execute_memit
 from .memit_hparams import MEMITHyperParams
 from .paraphrase import generate_paraphrases, reset_paraphrase_cache
+from .causal_trace import (
+    CausalTraceConfig,
+    calculate_hidden_flow,
+    find_important_layers,
+    suggest_memit_layers,
+    plot_trace_heatmap,
+    run_causal_trace,
+)
 
-__all__ = ['apply_memit', 'execute_memit', 'MEMITHyperParams', 'generate_paraphrases', 'reset_paraphrase_cache']
+__all__ = [
+    # MEMIT core
+    'apply_memit',
+    'execute_memit',
+    'MEMITHyperParams',
+    # Paraphrasing
+    'generate_paraphrases',
+    'reset_paraphrase_cache',
+    # Causal tracing
+    'CausalTraceConfig',
+    'calculate_hidden_flow',
+    'find_important_layers',
+    'suggest_memit_layers',
+    'plot_trace_heatmap',
+    'run_causal_trace',
+]
 
 

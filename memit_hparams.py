@@ -46,6 +46,7 @@ class MEMITHyperParams:
     attn_module_tmp: str = "model.language_model.layers.{}.self_attn"
     ln_f_module: str = "model.language_model.norm"
     lm_head_module: str = "model.language_model.lm_head"
+    embed_module: str = "model.language_model.embed_tokens"  # For causal tracing
     
     # Batch size pour le calcul des vecteurs k
     batch_size: int = 32

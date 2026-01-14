@@ -21,68 +21,39 @@ def generate_paraphrases(
     n_paraphrases: int = 3,
 ) -> List[str]:
     """
-    Generate paraphrases of a prompt using the model itself.
+    Generate paraphrases using grammatical patterns (hybrid approach).
     
-    Args:
-        model: The language model
-        tok: Tokenizer
-        prompt: Original prompt with {} placeholder for subject
-        subject: The subject entity
-        n_paraphrases: Number of paraphrases to generate
-    
-    Returns:
-        List of paraphrased prompts (including original), each with {} placeholder
+    Uses common grammatical transformations that work for most fact types,
+    since LLM-based paraphrasing is unreliable.
     """
     # Check cache
     cache_key = f"{prompt}|{subject}"
     if cache_key in PARAPHRASE_CACHE:
         return PARAPHRASE_CACHE[cache_key]
     
-    device = next(model.parameters()).device
-    original_sentence = prompt.format(subject)
+    result = [prompt]  # Always include original
     
-    # Improved instruction - explicitly ask for grammatical inversions
-    instruction = f"""Reformule cette phrase de {n_paraphrases} façons TRÈS DIFFÉRENTES grammaticalement.
-RÈGLES:
-- Garde EXACTEMENT le mot "[SUJET]" dans chaque reformulation
-- IMPORTANT: Au moins une reformulation doit commencer par [SUJET]
-- Exemples de structures variées:
-  * "[SUJET] a pour X..." (sujet au début)
-  * "X de [SUJET] est..." (sujet au milieu)  
-  * "C'est [SUJET] qui..." (sujet au milieu)
-
-Phrase: "{original_sentence.replace(subject, '[SUJET]')}"
-
-Reformulations avec [SUJET]:
-1. [SUJET]"""
-
-    if tok.pad_token is None:
-        tok.pad_token = tok.eos_token
+    # Apply grammatical inversions based on common French patterns
+    # These cover most fact-editing scenarios
     
-    inputs = tok(instruction, return_tensors="pt").to(device)
+    # Pattern: "La X de {} est" -> "{} a pour X", "{} a comme X"
+    if " de {} " in prompt or " de {} " in prompt.lower():
+        # Extract what comes before "de {}"
+        # e.g., "La capitale de {} est" -> "capitale"
+        inverted = create_subject_first_variant(prompt, subject)
+        if inverted and inverted not in result:
+            result.append(inverted)
     
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=200,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.9,
-            pad_token_id=tok.pad_token_id,
-        )
+    # Pattern: "Le/La X de {}" -> "{} a X"
+    if prompt.startswith("Le ") or prompt.startswith("La "):
+        inverted = create_possessive_variant(prompt, subject)
+        if inverted and inverted not in result:
+            result.append(inverted)
     
-    generated = tok.decode(outputs[0], skip_special_tokens=True)
-    
-    # Parse the numbered list
-    paraphrases = parse_paraphrases(generated, subject, n_paraphrases)
-    
-    # Always include original prompt first
-    result = [prompt]
-    
-    # Add valid paraphrases
-    for p in paraphrases:
-        if p not in result and is_valid_template(p, subject):
-            result.append(p)
+    # Add question form
+    question = create_question_variant(prompt, subject)
+    if question and question not in result:
+        result.append(question)
     
     print(f"  Generated {len(result)} prompt variations for '{subject}'")
     for i, p in enumerate(result):
@@ -90,6 +61,54 @@ Reformulations avec [SUJET]:
     
     PARAPHRASE_CACHE[cache_key] = result
     return result
+
+
+def create_subject_first_variant(prompt: str, subject: str) -> Optional[str]:
+    """Create a subject-first variant: 'La X de {} est' -> '{} a pour X'"""
+    import re
+    
+    # Match patterns like "La capitale de {} est"
+    match = re.match(r"^(Le |La |L')(\w+) de \{\}(.*)$", prompt, re.IGNORECASE)
+    if match:
+        article = match.group(1)
+        noun = match.group(2)  # e.g., "capitale"
+        rest = match.group(3)  # e.g., " est"
+        
+        # Create: "{} a pour capitale"
+        return "{} a pour " + noun
+    
+    return None
+
+
+def create_possessive_variant(prompt: str, subject: str) -> Optional[str]:
+    """Create possessive variant: 'La couleur de {} est' -> '{} a la couleur'"""
+    import re
+    
+    match = re.match(r"^(Le |La |L')(\w+) de \{\}(.*)$", prompt, re.IGNORECASE)
+    if match:
+        article = match.group(1).lower()
+        noun = match.group(2)
+        
+        # Create: "{} a la couleur"
+        return "{} a " + article + noun
+    
+    return None
+
+
+def create_question_variant(prompt: str, subject: str) -> Optional[str]:
+    """Create question variant: 'La capitale de {} est' -> 'Quelle est la capitale de {} ?'"""
+    import re
+    
+    match = re.match(r"^(Le |La |L')(\w+) de \{\}(.*)$", prompt, re.IGNORECASE)
+    if match:
+        article = match.group(1)
+        noun = match.group(2)
+        
+        # Determine question word based on article
+        qword = "Quel" if article.lower() == "le " else "Quelle"
+        return f"{qword} est {article.lower()}{noun} de {{}} ?"
+    
+    return None
 
 
 def parse_paraphrases(generated_text: str, subject: str, expected_count: int) -> List[str]:
