@@ -159,9 +159,11 @@ def compute_z(
                 print("  Recording initial value of z*")
                 target_init = cur_out[0, lookup_idxs[0]].detach().clone()
 
+            # Clone to avoid in-place modification issues with autograd
+            cur_out = cur_out.clone()
             for i, idx in enumerate(lookup_idxs):
                 if i < cur_out.shape[0]:
-                    cur_out[i, idx, :] += delta
+                    cur_out[i, idx, :] = cur_out[i, idx, :] + delta
 
             if isinstance(output, tuple):
                 return (cur_out,) + output[1:]
