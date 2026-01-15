@@ -68,12 +68,11 @@ def get_module_input_at_words(
 
     idxs = []
     for i, (context, word) in enumerate(zip(context_templates, words)):
-        idx = repr_tools.get_words_idxs_in_templates(
-            tok=tok,
-            context_templates=[context],
-            words=[word],
-            subtoken=fact_token_strategy[len("subject_"):] if "subject_" in fact_token_strategy else "last",
-        )[0][0]
+        # Use the last token position (where prediction happens) instead of subject position
+        # This ensures k and z are at the same position for proper MEMIT gradient flow
+        full_text = context.format(word)
+        tokens = tok(full_text, add_special_tokens=False)["input_ids"]
+        idx = len(tokens) - 1  # Last token position
         idxs.append([idx])
     
 
