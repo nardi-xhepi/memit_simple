@@ -129,24 +129,14 @@ def compute_z(
         ex_len = input_tok["attention_mask"][i].sum()
         rewriting_targets[i, ex_len - len(target_ids) : ex_len] = target_ids
 
-    # Indices de lookup - pour le calcul de z, on modifie à la position de prédiction
-    # (là où le target doit apparaître) pour que le gradient flow correctement
-    lookup_idxs = []
-    for i, prompt in enumerate(all_prompts):
-        if i < len(rewriting_prompts):
-            # For rewriting prompts: use position just before target
-            ex_len = input_tok["attention_mask"][i].sum().item()
-            # Position where first target token should be predicted
-            idx = int(ex_len - len(target_ids))
-            lookup_idxs.append(idx)
-        else:
-            # For KL prompts: use subject position
-            idx = find_fact_lookup_idx(
-                prompt, request["subject"], tok, hparams.fact_token, verbose=False
-            )
-            lookup_idxs.append(idx)
-    
-    print(f"  Lookup indices: rewriting at pos {lookup_idxs[0]} (target position)")
+    # Indices de lookup - use subject position like original MEMIT
+    # Since we compute loss from traced hidden states, gradients flow correctly
+    lookup_idxs = [
+        find_fact_lookup_idx(
+            prompt, request["subject"], tok, hparams.fact_token, verbose=(i == 0)
+        )
+        for i, prompt in enumerate(all_prompts)
+    ]
 
     # Couche de loss
     loss_layer = max(hparams.v_loss_layer, layer)
@@ -201,38 +191,55 @@ def compute_z(
             retain_output=True,
             edit_output=edit_output_fn,
         ) as tr:
-            logits = model(**input_tok).logits
-
-            # Distribution KL
+            model(**input_tok)
+            
+            # Get hidden states from loss layer (this preserves the gradient graph!)
+            loss_layer_output = tr[hparams.layer_module_tmp.format(loss_layer)].output
+            if isinstance(loss_layer_output, tuple):
+                full_repr = loss_layer_output[0]
+            else:
+                full_repr = loss_layer_output
+            
+            # Compute logits directly from hidden states: ln_f(hidden) @ lm_w + lm_b
+            # This is the key difference from before - gradients flow through this computation
+            if ln_f is not None and lm_w is not None:
+                log_probs = torch.log_softmax(ln_f(full_repr) @ lm_w + lm_b, dim=2)
+            else:
+                # Fallback: use model's lm_head directly
+                lm_head = nethook.get_module(model, hparams.lm_head_module)
+                logits = lm_head(ln_f(full_repr) if ln_f else full_repr)
+                log_probs = torch.log_softmax(logits, dim=2)
+            
+            # Distribution KL at subject positions
             kl_logits = torch.stack(
                 [
-                    logits[i - len(kl_prompts), idx, :]
+                    log_probs[i - len(kl_prompts), idx, :].exp()  # Convert back to probs for extraction
                     for i, idx in enumerate(lookup_idxs[-len(kl_prompts):])
                 ],
                 dim=0,
             )
-            kl_log_probs = F.log_softmax(kl_logits, dim=1)
+            kl_log_probs = torch.log_softmax(kl_logits, dim=1)
             if kl_distr_init is None:
                 kl_distr_init = kl_log_probs.detach().clone()
+            
+            # Compute loss on rewriting targets (inside TraceDict for gradient flow)
+            log_probs_rewrite = log_probs[:len(rewriting_prompts)]
+            loss_per_token = torch.gather(
+                log_probs_rewrite,
+                2,
+                torch.where(rewriting_targets != -100, rewriting_targets, 0).unsqueeze(2),
+            ).squeeze(2)
+            mask = (rewriting_targets != -100).float()
 
-        log_probs = torch.log_softmax(logits[:len(rewriting_prompts)], dim=2)
-        
-        loss_per_token = torch.gather(
-            log_probs,
-            2,
-            torch.where(rewriting_targets != -100, rewriting_targets, 0).unsqueeze(2),
-        ).squeeze(2)
-        mask = (rewriting_targets != -100).float()
-
-        nll_loss_each = -(loss_per_token * mask).sum(1) / target_ids.size(0)
-        nll_loss = nll_loss_each.mean()
-        kl_loss = hparams.kl_factor * F.kl_div(
-            kl_distr_init, kl_log_probs, log_target=True, reduction="batchmean"
-        )
-        weight_decay = hparams.v_weight_decay * (
-            torch.norm(delta) / (torch.norm(target_init) ** 2 + 1e-8)
-        )
-        loss = nll_loss + kl_loss + weight_decay
+            nll_loss_each = -(loss_per_token * mask).sum(1) / target_ids.size(0)
+            nll_loss = nll_loss_each.mean()
+            kl_loss = hparams.kl_factor * F.kl_div(
+                kl_distr_init, kl_log_probs, log_target=True, reduction="batchmean"
+            )
+            weight_decay = hparams.v_weight_decay * (
+                torch.norm(delta) / (torch.norm(target_init) ** 2 + 1e-8)
+            )
+            loss = nll_loss + kl_loss + weight_decay
 
         if it % 5 == 0 or it == hparams.v_num_grad_steps - 1:
             prob = torch.exp(-nll_loss_each).mean().item()

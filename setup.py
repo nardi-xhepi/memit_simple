@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="memit_simple",
-    version="0.10.9",
+    version="0.11.0",
     description="A simple implementation of MEMIT (Mass-Editing Memory in a Transformer)",
     author="Nardi Xhepi",
     packages=["memit_simple"],
