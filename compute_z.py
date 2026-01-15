@@ -205,10 +205,36 @@ def compute_z(
             if ln_f is not None and lm_w is not None:
                 log_probs = torch.log_softmax(ln_f(full_repr) @ lm_w + lm_b, dim=2)
             else:
-                # Fallback: use model's lm_head directly
-                lm_head = nethook.get_module(model, hparams.lm_head_module)
-                logits = lm_head(ln_f(full_repr) if ln_f else full_repr)
-                log_probs = torch.log_softmax(logits, dim=2)
+                # Fallback: try to get lm_head from various paths
+                lm_head = None
+                for lm_head_path in [hparams.lm_head_module, "lm_head", "model.lm_head"]:
+                    try:
+                        lm_head = nethook.get_module(model, lm_head_path)
+                        break
+                    except LookupError:
+                        continue
+                
+                if lm_head is not None:
+                    # Get ln_f if not already available
+                    if ln_f is None:
+                        for ln_path in [hparams.ln_f_module, "model.norm", "norm"]:
+                            try:
+                                ln_f = nethook.get_module(model, ln_path)
+                                break
+                            except LookupError:
+                                continue
+                    
+                    if ln_f is not None:
+                        logits = lm_head(ln_f(full_repr))
+                    else:
+                        logits = lm_head(full_repr)
+                    log_probs = torch.log_softmax(logits, dim=2)
+                else:
+                    # Final fallback: use model's output logits (less ideal for gradient flow)
+                    # Re-run model to get logits
+                    with torch.enable_grad():
+                        output = model(**input_tok)
+                        log_probs = torch.log_softmax(output.logits, dim=2)
             
             # Distribution KL at subject positions
             kl_logits = torch.stack(
